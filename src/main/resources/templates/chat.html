@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring Chat</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+<h1>Spring Chat Room 📡</h1>
+
+<div id="chat">
+    <ul id="messages">
+        <li th:each="msg : ${messages}">
+            <strong th:text="${msg.sender}">Sender</strong>:
+            <span th:text="${msg.content}">Content</span>
+            <span th:if="${msg.attachment != null}">
+                [<a th:href="@{/{file}(file=${msg.attachment.filename})}" target="_blank">Attachment</a>]
+            </span>
+        </li>
+    </ul>
+</div>
+
+<form id="messageForm">
+    <input type="text" id="sender" placeholder="Your name" required>
+    <input type="text" id="content" placeholder="Message" required>
+    <input type="file" id="file">
+    <button type="submit">Send</button>
+</form>
+
+<script>
+    let stompClient = null;
+
+    function connect() {
+        let socket = new SockJS('/chat');
+        stompClient = Stomp.over(socket);
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/topic/messages', function (messageOutput) {
+                showMessage(JSON.parse(messageOutput.body));
+            });
+        });
+    }
+
+    function showMessage(message) {
+        const messages = document.getElementById('messages');
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${message.sender}</strong>: ${message.content}` +
+            (message.attachment ? ` [<a href="/uploads/${message.attachment.filename}" target="_blank">Attachment</a>]` : '');
+        messages.appendChild(li);
+    }
+
+    document.getElementById('messageForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        const sender = document.getElementById('sender').value;
+        const content = document.getElementById('content').value;
+        const file = document.getElementById('file').files[0];
+
+        if (!file) {
+            stompClient.send("/app/messages", {}, JSON.stringify({'sender': sender, 'content': content}));
+        } else {
+            let formData = new FormData();
+            formData.append('sender', sender);
+            formData.append('content', content);
+            formData.append('file', file);
+
+            fetch('/api/messages', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.json())
+                .then(data => {
+                    // сообщение прилетит через WebSocket подписку
+                });
+        }
+
+        document.getElementById('content').value = '';
+        document.getElementById('file').value = '';
+    });
+
+    connect();
+</script>
+
+</body>
+</html>
